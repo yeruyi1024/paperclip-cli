@@ -1249,8 +1249,7 @@ install_node_deps() {
     if [ -f "$INSTALL_DIR/package.json" ]; then
         log_info "Installing Node.js dependencies (browser tools).. >> $INSTALL_DIR"
         cd "$INSTALL_DIR"
-        npm config set registry https://registry.npmmirror.com
-        npm install || {
+        npm install --registry=https://registry.npmmirror.com || {
             log_warn "npm install failed (browser tools may not work)"
         }
         log_success "Node.js dependencies installed"

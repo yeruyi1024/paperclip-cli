@@ -52,6 +52,7 @@ ROOT_FHS_LAYOUT=false
 USE_VENV=true
 RUN_SETUP=true
 BRANCH="main"
+INSTALL_USER=""
 
 # Detect non-interactive mode (e.g. curl | bash)
 # When stdin is not a terminal, read -p will fail with EOF,
@@ -72,6 +73,10 @@ while [[ $# -gt 0 ]]; do
         --skip-setup)
             RUN_SETUP=false
             shift
+            ;;
+        --install-user)
+            INSTALL_USER="$2"
+            shift 2
             ;;
         --branch)
             BRANCH="$2"
@@ -219,7 +224,7 @@ resolve_install_layout() {
     # Root on Linux: prefer FHS layout unless a legacy install already exists.
     # macOS root installs keep the legacy layout because /usr/local/ on macOS
     # is Homebrew territory and we don't want to fight that.
-    if [ "$OS" = "linux" ] && [ "$(id -u)" -eq 0 ]; then
+    if [ "$OS" = "linux" ] && [ "$(id -u)" -eq 0 ] && [ -z "$INSTALL_USER" ]; then
         if [ -d "$HERMES_HOME/hermes-agent/.git" ]; then
             INSTALL_DIR="$HERMES_HOME/hermes-agent"
             log_info "Existing install detected at $INSTALL_DIR — keeping legacy layout"
@@ -1242,10 +1247,10 @@ install_node_deps() {
     fi
 
     if [ -f "$INSTALL_DIR/package.json" ]; then
-        log_info "Installing Node.js dependencies (browser tools)..."
+        log_info "Installing Node.js dependencies (browser tools).. >> $INSTALL_DIR"
         cd "$INSTALL_DIR"
         npm config set registry https://registry.npmmirror.com
-        npm install --silent 2>/dev/null || {
+        npm install || {
             log_warn "npm install failed (browser tools may not work)"
         }
         log_success "Node.js dependencies installed"
@@ -1534,6 +1539,28 @@ main() {
     print_banner
 
     detect_os
+
+    # --- User Redirection ---
+    if [ -n "$INSTALL_USER" ]; then
+        TARGET_USER=$(id -un "$INSTALL_USER" 2>/dev/null || echo "$INSTALL_USER")
+        TARGET_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+        
+        if [ -z "$TARGET_HOME" ] || [ ! -d "$TARGET_HOME" ]; then
+            log_error "Could not find home directory for user $TARGET_USER"
+            exit 1
+        fi
+        
+        log_info "Redirecting installation to user: $TARGET_USER ($TARGET_HOME)"
+        # Hijack HOME so uv, python, node, and caches install to target user's domain
+        export HOME="$TARGET_HOME"
+        export USER="$TARGET_USER"
+        
+        # Force HERMES_HOME to target user if not explicitly passed
+        if [ "$INSTALL_DIR_EXPLICIT" = false ]; then
+            HERMES_HOME="$TARGET_HOME/.hermes"
+        fi
+    fi
+
     resolve_install_layout
     install_uv
     check_python
@@ -1549,6 +1576,36 @@ main() {
     copy_config_templates
     run_setup_wizard
     maybe_start_gateway
+
+    # --- Final Ownership Fix ---
+    if [ -n "$INSTALL_USER" ] && [ "$(id -u)" -eq 0 ]; then
+        log_info "Transferring ownership of all environments to $TARGET_USER..."
+        
+        # Transfer code and config
+        chown -R "$TARGET_USER":"$TARGET_USER" "$HERMES_HOME" 2>/dev/null || true
+        if [ "$INSTALL_DIR" != "$HERMES_HOME/hermes-agent" ]; then
+            chown -R "$TARGET_USER":"$TARGET_USER" "$INSTALL_DIR" 2>/dev/null || true
+        fi
+        
+        # Transfer Toolchains (uv, python, node link)
+        chown -R "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/.local/bin" 2>/dev/null || true
+        chown -R "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/.local/share/uv" 2>/dev/null || true
+        chown -R "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/.cargo/bin" 2>/dev/null || true
+        
+        # Transfer Caches (crucial for playwright browsers and npm/pip caches)
+        chown -R "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/.cache/ms-playwright" 2>/dev/null || true
+        chown -R "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/.cache/uv" 2>/dev/null || true
+        chown -R "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/.npm" 2>/dev/null || true
+        
+        # Transfer shell config files
+        for rc in "$TARGET_HOME/.bashrc" "$TARGET_HOME/.zshrc" "$TARGET_HOME/.profile" "$TARGET_HOME/.bash_profile" "$TARGET_HOME/.config/fish/config.fish"; do
+            if [ -f "$rc" ]; then
+                chown "$TARGET_USER":"$TARGET_USER" "$rc" 2>/dev/null || true
+            fi
+        done
+        
+        log_success "Ownership transfer complete. User $TARGET_USER can now run Hermes."
+    fi
 
     print_success
 }

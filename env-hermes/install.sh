@@ -224,7 +224,7 @@ resolve_install_layout() {
     # Root on Linux: prefer FHS layout unless a legacy install already exists.
     # macOS root installs keep the legacy layout because /usr/local/ on macOS
     # is Homebrew territory and we don't want to fight that.
-    if [ "$OS" = "linux" ] && [ "$(id -u)" -eq 0 ] && [ -z "$INSTALL_USER" ]; then
+    if [ "$OS" = "linux" ] && [ "$(id -u)" -eq 0 ]; then
         if [ -d "$HERMES_HOME/hermes-agent/.git" ]; then
             INSTALL_DIR="$HERMES_HOME/hermes-agent"
             log_info "Existing install detected at $INSTALL_DIR — keeping legacy layout"
@@ -1249,7 +1249,7 @@ install_node_deps() {
     if [ -f "$INSTALL_DIR/package.json" ]; then
         log_info "Installing Node.js dependencies (browser tools).. >> $INSTALL_DIR"
         cd "$INSTALL_DIR"
-        npm install --registry=https://registry.npmmirror.com || {
+        npm install --registry=https://registry.npmmirror.com --ignore-scripts || {
             log_warn "npm install failed (browser tools may not work)"
         }
         log_success "Node.js dependencies installed"

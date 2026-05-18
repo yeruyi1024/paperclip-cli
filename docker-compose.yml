@@ -14,9 +14,10 @@ services:
       - ./data/pgdata:/var/lib/postgresql/data
 
   server:
-    image: paperclip
+    image: paperclip-hermes-nexa:P05140-H0507
     ports:
       - "3100:3100"
+      - "23001:3001"
     environment:
       DATABASE_URL: postgres://paperclip:paperclip@db:5432/paperclip
       PORT: "3100"
@@ -26,12 +27,16 @@ services:
       PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}"
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}"
     volumes:
-      - ./data/paperclip-data:/paperclip
-      - /Users/yeruyi/Documents/workspace-agentmanager/nexa-saas-repo:/nexa-saas
+      - ./data/paperclip-data/instances:/paperclip/instances
+      - ./data/paperclip-data/.hermes:/paperclip/.hermes
+      - ./data/paperclip-data/.claude:/paperclip/.claude
+      - ./data/paperclip-data/.claude.json:/paperclip/.claude.json
       - ./skills:/skills
       - ./shared:/shared
       - ./corp:/corp
-      - ./hermes:/.hermes
+      - /Users/yeruyi/Documents/workspace-agentmanager/nexa-saas-repo:/nexa-saas
+      - /Users/yeruyi/Documents/workspace-agentmanager/nexal-monitor:/nexal-monitor
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       db:
         condition: service_healthy

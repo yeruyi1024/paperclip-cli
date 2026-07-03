@@ -14,7 +14,7 @@ services:
       - ./data/pgdata:/var/lib/postgresql/data
 
   server:
-    image: paperclip-hermes-nexa:P05140-H0507
+    image: paperclip-hermes-nexa:P06270-H0516
     ports:
       - "3100:3100"
       - "23001:3001"
